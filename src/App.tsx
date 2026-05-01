@@ -102,6 +102,8 @@ interface UserData {
   diamonds: number;
   avatarUrl: string;
   accountId: number;
+  discordId?: string;
+  discordHandle?: string;
   lastActive?: any;
 }
 
@@ -146,7 +148,12 @@ export default function App() {
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
 
   useEffect(() => {
-    // Online Users Listener
+    if (!user) {
+      setOnlineUsers([]);
+      return;
+    }
+
+    // Online Citizens Dashboard Listener
     const q = query(collection(db, 'users'));
     const unsubOnline = onSnapshot(q, (snapshot) => {
       const users = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -159,9 +166,20 @@ export default function App() {
         return (now - lastActiveTime) < oneHour;
       });
       setOnlineUsers(online);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+    }, (error) => {
+      // Gracefully handle permission errors if they occur mid-session
+      if (error.message.includes('permission-denied')) {
+        console.warn("Listing restricted.");
+      } else {
+        handleFirestoreError(error, OperationType.LIST, 'users');
+      }
+    });
 
-    // Load Settings
+    return () => unsubOnline();
+  }, [user]);
+
+  useEffect(() => {
+    // Load Global Settings
     const settingsRef = doc(db, 'settings', 'global');
     const unsubSettings = onSnapshot(settingsRef, (snap) => {
       if (snap.exists()) {
@@ -257,11 +275,66 @@ export default function App() {
       }
       setIsAuthLoading(false);
     });
+
+    // Handle Discord OAuth Messages
+    const handleMessage = async (event: MessageEvent) => {
+      if (!event.origin.endsWith('.run.app') && !event.origin.includes('localhost')) return;
+      
+      if (event.data?.type === 'DISCORD_AUTH_SUCCESS' && event.data.data) {
+        const discordUser = event.data.data;
+        if (auth.currentUser) {
+           const userRef = doc(db, 'users', auth.currentUser.uid);
+           await updateDoc(userRef, {
+             discordId: discordUser.id,
+             discordHandle: `${discordUser.username}#${discordUser.discriminator}`
+           });
+           setUserData(prev => prev ? { 
+             ...prev, 
+             discordId: discordUser.id, 
+             discordHandle: `${discordUser.username}#${discordUser.discriminator}`
+           } : null);
+           alert(`Discord vinculado: @${discordUser.username}`);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
     return () => {
       unsubSettings();
       unsubscribe();
+      window.removeEventListener('message', handleMessage);
     };
   }, []);
+
+  const handleDiscordLink = async () => {
+    try {
+      const response = await fetch('/api/auth/discord/url');
+      
+      if (!response.ok) {
+        let errorMessage = 'Erro ao conectar com o servidor.';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          // If not json, use status text
+          errorMessage = `Erro ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error(`Resposta inesperada do servidor: ${await response.text().then(t => t.slice(0, 100))}...`);
+      }
+
+      const { url } = await response.json();
+      window.open(url, 'discord_auth', 'width=600,height=800');
+    } catch (err: any) {
+      console.error(err);
+      alert(`Erro: ${err.message}`);
+    }
+  };
 
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();
@@ -352,7 +425,7 @@ export default function App() {
 
               <button 
                 className="w-full py-4 bg-[#5865F2] hover:bg-[#4752C4] text-white font-heavy tracking-tighter text-lg rounded-xl transition-all duration-500 flex items-center justify-center gap-3 group relative overflow-hidden shadow-lg shadow-[#5865F2]/10"
-                onClick={() => alert('Integração com Discord em breve! Aproveite sua cidadania.')}
+                onClick={handleDiscordLink}
               >
                 <div className="w-5 h-5 flex items-center justify-center">
                   <svg fill="currentColor" viewBox="0 0 24 24" className="w-full h-full"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037 19.736 19.736 0 0 0-4.885 1.515.069.069 0 0 0-.032.027C.533 9.048-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.956 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z"/></svg>
@@ -581,31 +654,34 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 lg:p-10 scroll-smooth">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentPage}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="max-w-7xl mx-auto h-full"
-            >
-              {currentPage === 'home' && <HomeSection userData={userData} navigate={navigate} settings={settings} />}
-              {currentPage === 'whitelist' && <WhitelistSection />}
-              {currentPage === 'rules' && <RulesSection />}
-              {currentPage === 'store' && <StoreSection userData={userData} />}
-              {currentPage === 'faq' && <FAQSection />}
-              {currentPage === 'orgs' && <OrgsSection />}
-              {currentPage === 'support' && <SupportSection user={user} isAdmin={['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'].includes(userData?.role || '')} />}
-              {currentPage === 'admin' && ['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'].includes(userData?.role || '') && <AdminSection />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
+        {/* Main Interface Area */}
+        <div className="flex-1 flex flex-row overflow-hidden relative">
+          {/* Content Area */}
+          <div className="flex-1 overflow-y-auto p-6 lg:p-10 scroll-smooth custom-scrollbar">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentPage}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="max-w-7xl mx-auto h-full"
+              >
+                {currentPage === 'home' && <HomeSection userData={userData} navigate={navigate} settings={settings} />}
+                {currentPage === 'whitelist' && <WhitelistSection />}
+                {currentPage === 'rules' && <RulesSection />}
+                {currentPage === 'store' && <StoreSection userData={userData} />}
+                {currentPage === 'faq' && <FAQSection />}
+                {currentPage === 'orgs' && <OrgsSection />}
+                {currentPage === 'support' && <SupportSection user={user} isAdmin={['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'].includes(userData?.role || '')} />}
+                {currentPage === 'admin' && ['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'].includes(userData?.role || '') && <AdminSection />}
+              </motion.div>
+            </AnimatePresence>
+          </div>
 
-        {/* Discord-style Online Sidebar */}
-        <OnlineCitizensDashboard users={onlineUsers} />
+          {/* Discord-style Online Sidebar */}
+          <OnlineCitizensDashboard users={onlineUsers} />
+        </div>
       </main>
     </div>
   );
@@ -635,7 +711,7 @@ function OnlineCitizensDashboard({ users }: { users: any[] }) {
   };
 
   return (
-    <div className="hidden 2xl:flex w-72 h-[calc(100vh-6rem)] mt-24 border-l border-white/5 bg-black/20 backdrop-blur-3xl flex-col p-6 sticky top-24 overflow-y-auto custom-scrollbar">
+    <div className="hidden 2xl:flex w-72 h-full border-l border-white/5 bg-black/20 backdrop-blur-3xl flex-col p-6 overflow-y-auto custom-scrollbar shadow-[-20px_0_50px_-20px_rgba(0,0,0,0.5)]">
       <div className="flex items-center justify-between mb-8">
         <h3 className="text-[10px] font-black text-white/20 uppercase tracking-[0.4em]">Cidadãos On-line</h3>
         <span className="text-[10px] font-mono font-black text-verdinha bg-verdinha/10 px-2 py-0.5 rounded tracking-tighter">
