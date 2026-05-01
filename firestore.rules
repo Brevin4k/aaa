@@ -11,8 +11,9 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function isStaff() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'];
     }
 
     function isAdmin() {
@@ -24,58 +25,67 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Users
-    match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'avatarUrl', 'role'])) || isAdmin();
+    function isValidUser(data) {
+      return data.displayName is string && data.displayName.size() <= 100 &&
+             data.role in ['player', 'admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'] &&
+             data.coins is number &&
+             data.diamonds is number;
     }
 
-    // Public Content (Readable by all signed in users)
+    // Users
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); // Needed for Online Citizens dashboard
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(request.resource.data);
+      allow update: if isStaff() || (isOwner(userId) && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'avatarUrl', 'lastActive', 'accountId']));
+    }
+
+    // Public Content
     match /whitelistDocs/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     match /rules/{ruleId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     match /storeItems/{itemId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     match /faqs/{faqId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     match /organizations/{orgId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     // Support Tickets
     match /supportTickets/{ticketId} {
-      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isStaff());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isStaff());
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow update: if isStaff();
+      allow delete: if isStaff();
 
       match /messages/{messageId} {
-        allow read: if isSignedIn() && (get(/databases/$(database)/documents/supportTickets/$(ticketId)).data.userId == request.auth.uid || isAdmin());
-        allow create: if isSignedIn() && (get(/databases/$(database)/documents/supportTickets/$(ticketId)).data.userId == request.auth.uid || isAdmin());
+        allow read: if isSignedIn() && (get(/databases/$(database)/documents/supportTickets/$(ticketId)).data.userId == request.auth.uid || isStaff());
+        allow create: if isSignedIn() && (get(/databases/$(database)/documents/supportTickets/$(ticketId)).data.userId == request.auth.uid || isStaff());
       }
     }
 
     // Site Settings
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow update: if (settingId == 'counters' && isSignedIn()) || isStaff();
+      allow write: if isStaff();
     }
   }
 }

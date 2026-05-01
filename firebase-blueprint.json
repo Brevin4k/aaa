@@ -7,12 +7,14 @@
       "properties": {
         "displayName": { "type": "string" },
         "email": { "type": "string" },
-        "role": { "type": "string", "enum": ["player", "admin"] },
+        "role": { "type": "string", "enum": ["player", "admin", "diretor", "administrador", "coordenador", "moderador", "suporte"] },
         "coins": { "type": "number" },
         "diamonds": { "type": "number" },
         "discordId": { "type": "string" },
         "steamId": { "type": "string" },
         "avatarUrl": { "type": "string" },
+        "accountId": { "type": "number" },
+        "lastActive": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["displayName", "role", "coins", "diamonds"]

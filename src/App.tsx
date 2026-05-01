@@ -54,15 +54,55 @@ import {
 } from 'firebase/firestore';
 
 // Types
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // Not throwing to avoid crashing the whole app, but logging is critical
+}
+
 type Page = 'home' | 'whitelist' | 'rules' | 'store' | 'faq' | 'orgs' | 'support' | 'admin';
+
+type UserRole = 'player' | 'admin' | 'diretor' | 'administrador' | 'coordenador' | 'moderador' | 'suporte';
 
 interface UserData {
   displayName: string;
-  role: 'player' | 'admin';
+  role: UserRole;
   coins: number;
   diamonds: number;
   avatarUrl: string;
   accountId: number;
+  lastActive?: any;
 }
 
 interface SettingsData {
@@ -103,8 +143,24 @@ export default function App() {
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
 
   useEffect(() => {
+    // Online Users Listener
+    const q = query(collection(db, 'users'));
+    const unsubOnline = onSnapshot(q, (snapshot) => {
+      const users = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      const now = Date.now();
+      const oneHour = 60 * 60 * 1000;
+      
+      const online = users.filter((u: any) => {
+        if (!u.lastActive) return false;
+        const lastActiveTime = u.lastActive.toDate ? u.lastActive.toDate().getTime() : new Date(u.lastActive).getTime();
+        return (now - lastActiveTime) < oneHour;
+      });
+      setOnlineUsers(online);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+
     // Load Settings
     const settingsRef = doc(db, 'settings', 'global');
     const unsubSettings = onSnapshot(settingsRef, (snap) => {
@@ -117,51 +173,84 @@ export default function App() {
           serverIp: data.serverIp || ''
         });
       }
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/global'));
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
         // Fetch or create user data
         const userRef = doc(db, 'users', firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-        
-        if (userSnap.exists()) {
-          setUserData(userSnap.data() as UserData);
-        } else {
-          let newAccountId = 0;
+        try {
+          const userSnap = await getDoc(userRef);
           
-          if (firebaseUser.email === 'tatobeats@outlook.com') {
-            newAccountId = 1;
-          } else {
-            // Sequential ID logic starting from 100
-            try {
-              const counterRef = doc(db, 'settings', 'counters');
-              await runTransaction(db, async (transaction) => {
-                const counterSnap = await transaction.get(counterRef);
-                let nextId = 100;
-                if (counterSnap.exists()) {
-                  nextId = (counterSnap.data().lastAccountId || 99) + 1;
+          if (userSnap.exists()) {
+            const existingData = userSnap.data() as UserData;
+            if (existingData.accountId === undefined || existingData.accountId === null) {
+              // Assign ID to existing user without ID
+              let newAccountId = 0;
+              if (firebaseUser.email === 'tatobeats@outlook.com') {
+                newAccountId = 1;
+              } else {
+                try {
+                  const counterRef = doc(db, 'settings', 'counters');
+                  await runTransaction(db, async (transaction) => {
+                    const counterSnap = await transaction.get(counterRef);
+                    let nextId = 100;
+                    if (counterSnap.exists()) {
+                      nextId = (counterSnap.data().lastAccountId || 99) + 1;
+                    }
+                    transaction.set(counterRef, { lastAccountId: nextId }, { merge: true });
+                    newAccountId = nextId;
+                  });
+                } catch (err) {
+                  newAccountId = Math.floor(100 + Math.random() * 900);
                 }
-                transaction.set(counterRef, { lastAccountId: nextId }, { merge: true });
-                newAccountId = nextId;
-              });
-            } catch (err) {
-              console.error("Erro ao gerar ID, usando fallback randômico:", err);
-              newAccountId = Math.floor(100 + Math.random() * 900);
+              }
+              const updatedData = { ...existingData, accountId: newAccountId, lastActive: serverTimestamp() };
+              await updateDoc(userRef, { accountId: newAccountId, lastActive: serverTimestamp() });
+              setUserData(updatedData);
+            } else {
+              await updateDoc(userRef, { lastActive: serverTimestamp() });
+              setUserData({ ...existingData, lastActive: new Date() });
             }
-          }
+          } else {
+            let newAccountId = 0;
+            
+            if (firebaseUser.email === 'tatobeats@outlook.com') {
+              newAccountId = 1;
+            } else {
+              // Sequential ID logic starting from 100
+              try {
+                const counterRef = doc(db, 'settings', 'counters');
+                await runTransaction(db, async (transaction) => {
+                  const counterSnap = await transaction.get(counterRef);
+                  let nextId = 100;
+                  if (counterSnap.exists()) {
+                    nextId = (counterSnap.data().lastAccountId || 99) + 1;
+                  }
+                  transaction.set(counterRef, { lastAccountId: nextId }, { merge: true });
+                  newAccountId = nextId;
+                });
+              } catch (err) {
+                console.error("Erro ao gerar ID, usando fallback randômico:", err);
+                newAccountId = Math.floor(100 + Math.random() * 900);
+              }
+            }
 
-          const newData: UserData = {
-            displayName: firebaseUser.displayName || 'Cidadão',
-            role: firebaseUser.email === 'tatobeats@outlook.com' ? 'admin' : 'player',
-            coins: 0,
-            diamonds: 0,
-            avatarUrl: firebaseUser.photoURL || '',
-            accountId: newAccountId
-          };
-          await setDoc(userRef, newData);
-          setUserData(newData);
+            const newData: UserData = {
+              displayName: firebaseUser.displayName || 'Cidadão',
+              role: firebaseUser.email === 'tatobeats@outlook.com' ? 'admin' : 'player',
+              coins: 0,
+              diamonds: 0,
+              avatarUrl: firebaseUser.photoURL || '',
+              accountId: newAccountId,
+              lastActive: serverTimestamp()
+            };
+            await setDoc(userRef, newData);
+            setUserData(newData);
+          }
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
         }
       } else {
         setUserData(null);
@@ -334,11 +423,11 @@ export default function App() {
           <NavItem active={currentPage === 'orgs'} icon={<Users size={18} />} label="Facções" onClick={() => navigate('orgs')} />
           <NavItem active={currentPage === 'support'} icon={<LifeBuoy size={18} />} label="Central Staff" onClick={() => navigate('support')} />
           
-          {userData?.role === 'admin' && (
+          {['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'].includes(userData?.role || '') && (
             <NavItem 
               active={currentPage === 'admin'} 
               icon={<Settings size={18} />} 
-              label="Painel Admin" 
+              label="Painel Staff" 
               onClick={() => navigate('admin')}
               className="text-verdinha/60 hover:text-verdinha mt-12 border-t border-white/5 pt-6"
             />
@@ -401,13 +490,22 @@ export default function App() {
               <div className="text-right hidden sm:block">
                 <div className="flex items-center justify-end gap-2 mb-1">
                   <p className="text-sm font-black text-white leading-none uppercase italic">
-                    <span className="text-verdinha/60 mr-1.5 text-[10px] tracking-tight not-italic font-mono">ID# {userData?.accountId}</span>
+                    {userData?.accountId && (
+                      <span className="text-verdinha/60 mr-1.5 text-[10px] tracking-tight not-italic font-mono">ID# {userData.accountId}</span>
+                    )}
                     {userData?.displayName}
                   </p>
                 </div>
                 <div className="flex items-center justify-end gap-2">
-                  <p className="text-[10px] text-white/20 font-black uppercase tracking-[0.2em] leading-none">{userData?.role === 'admin' ? 'Administração' : 'Morador'}</p>
-                  {userData?.role !== 'admin' && (
+                  <p className="text-[10px] text-white/20 font-black uppercase tracking-[0.2em] leading-none">
+                    {userData?.role === 'admin' ? 'Fundador' : 
+                     userData?.role === 'diretor' ? 'Diretor' :
+                     userData?.role === 'administrador' ? 'Administrador' :
+                     userData?.role === 'coordenador' ? 'Coordenador' :
+                     userData?.role === 'moderador' ? 'Moderador' :
+                     userData?.role === 'suporte' ? 'Suporte' : 'Morador'}
+                  </p>
+                  {!['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'].includes(userData?.role || '') && (
                     <button 
                       onClick={() => setIsAdminAuthOpen(true)}
                       className="text-[10px] text-white/10 hover:text-verdinha transition-colors uppercase font-black tracking-tighter"
@@ -500,12 +598,89 @@ export default function App() {
               {currentPage === 'store' && <StoreSection userData={userData} />}
               {currentPage === 'faq' && <FAQSection />}
               {currentPage === 'orgs' && <OrgsSection />}
-              {currentPage === 'support' && <SupportSection user={user} isAdmin={userData?.role === 'admin'} />}
-              {currentPage === 'admin' && userData?.role === 'admin' && <AdminSection />}
+              {currentPage === 'support' && <SupportSection user={user} isAdmin={['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'].includes(userData?.role || '')} />}
+              {currentPage === 'admin' && ['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte'].includes(userData?.role || '') && <AdminSection />}
             </motion.div>
           </AnimatePresence>
         </div>
+
+        {/* Discord-style Online Sidebar */}
+        <OnlineCitizensDashboard users={onlineUsers} />
       </main>
+    </div>
+  );
+}
+
+function OnlineCitizensDashboard({ users }: { users: any[] }) {
+  const staffRolesOrder: UserRole[] = ['admin', 'diretor', 'administrador', 'coordenador', 'moderador', 'suporte', 'player'];
+  
+  const roleLabels: Record<UserRole, string> = {
+    admin: 'Fundadores',
+    diretor: 'Diretoria',
+    administrador: 'Administração',
+    coordenador: 'Coordenação',
+    moderador: 'Moderação',
+    suporte: 'Suporte',
+    player: 'Moradores'
+  };
+
+  const roleColors: Record<UserRole, string> = {
+    admin: 'text-verdinha',
+    diretor: 'text-red-500',
+    administrador: 'text-orange-400',
+    coordenador: 'text-yellow-400',
+    moderador: 'text-blue-400',
+    suporte: 'text-green-400',
+    player: 'text-white/40'
+  };
+
+  return (
+    <div className="hidden 2xl:flex w-72 h-[calc(100vh-6rem)] mt-24 border-l border-white/5 bg-black/20 backdrop-blur-3xl flex-col p-6 sticky top-24 overflow-y-auto custom-scrollbar">
+      <div className="flex items-center justify-between mb-8">
+        <h3 className="text-[10px] font-black text-white/20 uppercase tracking-[0.4em]">Cidadãos On-line</h3>
+        <span className="text-[10px] font-mono font-black text-verdinha bg-verdinha/10 px-2 py-0.5 rounded tracking-tighter">
+          {users.length}
+        </span>
+      </div>
+
+      <div className="space-y-8">
+        {staffRolesOrder.map(role => {
+          const usersInRole = users.filter(u => u.role === role);
+          if (usersInRole.length === 0) return null;
+
+          return (
+            <div key={role} className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className={cn("text-[10px] font-black uppercase tracking-widest leading-none", roleColors[role])}>
+                  {roleLabels[role]}
+                </span>
+                <span className="h-px flex-1 bg-white/[0.03]" />
+                <span className="text-[8px] font-mono text-white/10">{usersInRole.length}</span>
+              </div>
+
+              <div className="space-y-3">
+                {usersInRole.map(u => (
+                  <div key={u.id} className="flex items-center gap-3 group cursor-pointer hover:bg-white/[0.02] p-1.5 rounded-xl transition-all">
+                    <div className="relative w-8 h-8 shrink-0">
+                      <img 
+                        src={u.avatarUrl || 'https://via.placeholder.com/150'} 
+                        className="w-full h-full rounded-lg object-cover bg-white/5" 
+                      />
+                      <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-verdinha border-2 border-black rounded-full" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className={cn("text-[11px] font-bold truncate tracking-tight transition-colors", roleColors[role === 'player' ? 'player' : role])}>
+                        <span className="text-white/20 mr-1.5 font-mono">#{u.accountId}</span>
+                        {u.displayName}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -550,6 +725,9 @@ function HomeSection({ userData, navigate, settings }: { userData: UserData | nu
           <h2 className="text-sm font-black tracking-[0.4em] text-verdinha uppercase italic">Sistemas • Dashboard</h2>
           <h1 className="text-5xl sm:text-7xl font-black tracking-tight text-white uppercase italic leading-none">
             BEM-VINDO, {userData?.displayName}
+            {userData?.accountId && (
+              <span className="text-verdinha opacity-20 ml-4 text-3xl sm:text-5xl not-italic font-mono">#{userData.accountId}</span>
+            )}
           </h1>
           <p className="text-white/30 font-medium text-lg leading-relaxed border-l border-verdinha/20 pl-6">
             Portal oficial de cidadania. Controle seus recursos e acessos de forma simplificada em uma interface de alta performance.
@@ -656,7 +834,7 @@ function WhitelistSection() {
     const q = query(collection(db, 'whitelistDocs'), orderBy('order', 'asc'));
     return onSnapshot(q, (snapshot) => {
       setDocs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'whitelistDocs'));
   }, []);
 
   return (
@@ -701,7 +879,7 @@ function RulesSection() {
     const q = query(collection(db, 'rules'), orderBy('category', 'asc'));
     return onSnapshot(q, (snapshot) => {
       setRules(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'rules'));
   }, []);
 
   const categories = Array.from(new Set(rules.map(r => r.category)));
@@ -755,7 +933,7 @@ function StoreSection({ userData }: { userData: UserData | null }) {
     const q = query(collection(db, 'storeItems'), orderBy('price', 'asc'));
     return onSnapshot(q, (snapshot) => {
       setItems(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'storeItems'));
   }, []);
 
   const filteredItems = activeTab === 'all' ? items : items.filter(i => i.category === activeTab);
@@ -860,7 +1038,7 @@ function FAQSection() {
     const q = query(collection(db, 'faqs'));
     return onSnapshot(q, (snapshot) => {
       setFaqs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'faqs'));
   }, []);
 
   const categories = Array.from(new Set(faqs.map(f => f.category)));
@@ -907,7 +1085,7 @@ function OrgsSection() {
     const q = query(collection(db, 'organizations'));
     return onSnapshot(q, (snapshot) => {
       setOrgs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'organizations'));
   }, []);
 
   return (
@@ -981,7 +1159,7 @@ function SupportSection({ user, isAdmin }: { user: FirebaseUser | null; isAdmin?
     
     return onSnapshot(q, (snapshot) => {
       setTickets(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'supportTickets'));
   }, [user, isAdmin]);
 
   useEffect(() => {
@@ -989,7 +1167,7 @@ function SupportSection({ user, isAdmin }: { user: FirebaseUser | null; isAdmin?
     const q = query(collection(db, 'supportTickets', selectedTicket.id, 'messages'), orderBy('timestamp', 'asc'));
     return onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `supportTickets/${selectedTicket.id}/messages`));
   }, [selectedTicket]);
 
   const handleCreateTicket = async () => {
@@ -1237,20 +1415,18 @@ function AdminSection() {
     const q = activeTab === 'users' ? query(collection(db, 'users')) : query(collection(db, collectionName), orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
       setItems(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => {
-      console.error("Erro ao carregar dados:", error);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, collectionName));
   }, [activeTab]);
 
-  // Management functions for diamonds
-  const handleUpdateDiamonds = async (userId: string, amount: number) => {
+  // Management functions for currencies
+  const handleUpdateCurrency = async (userId: string, field: 'diamonds' | 'coins', amount: number) => {
     if (isNaN(amount)) return;
     try {
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
-        const current = userSnap.data().diamonds || 0;
-        await updateDoc(userRef, { diamonds: current + amount });
+        const current = userSnap.data()[field] || 0;
+        await updateDoc(userRef, { [field]: current + amount });
         alert(`Sucesso! ${amount > 0 ? 'Adicionado' : 'Removido'} com sucesso.`);
       }
     } catch(err) {
@@ -1258,6 +1434,34 @@ function AdminSection() {
       alert('Erro ao atualizar saldo.');
     }
   };
+
+  // Management functions for users
+  const handleUpdateUserBasic = async (userId: string, field: string, value: any) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, { [field]: value });
+      alert('Dados atualizados com sucesso!');
+    } catch(err) {
+      console.error(err);
+      alert('Erro ao atualizar dados do cidadão.');
+    }
+  };
+
+  const staffRoles: { id: UserRole; label: string; color: string }[] = [
+    { id: 'player', label: 'Morador', color: 'bg-white/10 text-white/40' },
+    { id: 'suporte', label: 'Suporte', color: 'bg-green-500/20 text-green-400' },
+    { id: 'moderador', label: 'Moderador', color: 'bg-blue-500/20 text-blue-400' },
+    { id: 'coordenador', label: 'Coordenador', color: 'bg-yellow-500/20 text-yellow-400' },
+    { id: 'administrador', label: 'Administrador', color: 'bg-orange-500/20 text-orange-400' },
+    { id: 'diretor', label: 'Diretor', color: 'bg-red-500/20 text-red-500' },
+    { id: 'admin', label: 'Fundador', color: 'bg-verdinha text-black' },
+  ];
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const filteredUsers = items.filter(u => 
+    u.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    u.accountId?.toString().includes(searchTerm)
+  );
 
   // Settings specific
   const [settingsData, setSettingsData] = useState<SettingsData>({ backgroundUrl: '', logoUrl: '', fivemCfxId: '', serverIp: '' });
@@ -1407,53 +1611,105 @@ function AdminSection() {
             </form>
           </div>
         ) : activeTab === 'users' ? (
-          <div className="lg:col-span-full space-y-6">
-            <div className="bg-glass border border-white/5 p-8 rounded-[3rem] space-y-2">
-              <h3 className="text-2xl font-black text-white italic uppercase tracking-tight">Gestão de Cidadãos</h3>
-              <p className="text-white/30 text-sm font-medium">Buscando por {items.length} moradores registrados.</p>
+          <div className="lg:col-span-full space-y-8">
+            <div className="bg-glass border border-white/5 p-10 rounded-[3rem] flex flex-col md:flex-row md:items-center justify-between gap-8">
+              <div className="space-y-2">
+                <h3 className="text-3xl font-black text-white italic uppercase tracking-tight">Gestão de Cidadãos</h3>
+                <p className="text-white/30 text-sm font-medium">Buscando por {items.length} moradores registrados.</p>
+              </div>
+              <div className="relative group">
+                <input 
+                  type="text" 
+                  placeholder="Pesquisar por Nome ou ID..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded-2xl px-8 py-5 w-full md:w-80 text-white focus:outline-none focus:border-verdinha transition-all placeholder:text-white/10"
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-1 gap-4">
-              {items.map(u => (
-                <div key={u.id} className="bg-glass border border-white/5 p-8 rounded-[3rem] flex items-center justify-between group hover:border-white/10 transition-all duration-500">
-                  <div className="flex items-center gap-6">
-                    <img src={u.avatarUrl || 'https://via.placeholder.com/150'} className="w-20 h-20 rounded-[2rem] object-cover bg-white/5" />
-                    <div>
-                       <span className="text-[10px] text-verdinha font-black uppercase tracking-widest bg-verdinha/10 px-2 py-0.5 rounded">ID #{u.accountId}</span>
-                       <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter mt-1">{u.displayName}</h4>
-                       <div className="flex items-center gap-2 mt-2">
-                         <Diamond size={12} className="text-verdinha" />
-                         <p className="text-white/40 text-xs font-mono font-black">{u.diamonds || 0} <span className="opacity-40">Diamonds</span></p>
+
+            <div className="grid grid-cols-1 gap-6">
+              {filteredUsers.map(u => (
+                <div key={u.id} className="bg-glass border border-white/5 p-10 rounded-[3rem] flex flex-col xl:flex-row xl:items-start justify-between gap-8 group hover:border-white/10 transition-all duration-700">
+                  <div className="flex items-start gap-8 flex-1">
+                    <div className="relative shrink-0">
+                      <div className="absolute -inset-2 bg-verdinha/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 rounded-full" />
+                      <img src={u.avatarUrl || 'https://via.placeholder.com/150'} className="w-24 h-24 rounded-[2.5rem] object-cover bg-white/5 relative z-10" />
+                    </div>
+                    <div className="flex-1 space-y-6">
+                       <div className="flex flex-wrap items-center gap-4">
+                          <div className="relative group/id">
+                            <input 
+                              type="number"
+                              defaultValue={u.accountId}
+                              onBlur={(e) => {
+                                if (Number(e.target.value) !== u.accountId) handleUpdateUserBasic(u.id, 'accountId', Number(e.target.value));
+                              }}
+                              className="bg-verdinha/10 border border-verdinha/20 text-verdinha font-black uppercase tracking-widest px-3 py-1 rounded w-20 text-center text-[10px] focus:outline-none focus:border-verdinha transition-all"
+                            />
+                            <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[8px] font-black text-verdinha/40 uppercase tracking-widest opacity-0 group-hover/id:opacity-100 transition-opacity">Editar ID</span>
+                          </div>
+                          <div className="relative flex-1 min-w-[200px] group/name">
+                            <input 
+                              type="text"
+                              defaultValue={u.displayName}
+                              onBlur={(e) => {
+                                if (e.target.value !== u.displayName) handleUpdateUserBasic(u.id, 'displayName', e.target.value);
+                              }}
+                              className="bg-transparent border-b border-white/5 text-3xl font-black text-white uppercase italic tracking-tighter w-full focus:outline-none focus:border-verdinha transition-all"
+                            />
+                            <span className="absolute -top-6 left-0 text-[8px] font-black text-white/20 uppercase tracking-widest opacity-0 group-hover/name:opacity-100 transition-opacity">Editar Nome</span>
+                          </div>
+                       </div>
+
+                       <div className="flex flex-wrap gap-2">
+                          {staffRoles.map(role => (
+                             <button
+                               key={role.id}
+                               onClick={() => handleUpdateUserBasic(u.id, 'role', role.id)}
+                               className={cn(
+                                 "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                                 u.role === role.id 
+                                   ? role.color + " ring-1 ring-white/20" 
+                                   : "bg-white/5 text-white/20 hover:bg-white/10 hover:text-white"
+                               )}
+                             >
+                               {role.label}
+                             </button>
+                          ))}
+                       </div>
+
+                       <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-white/5">
+                         <div className="flex items-center gap-3">
+                           <Coins size={14} className="text-white/40" />
+                           <p className="text-white/40 text-xs font-mono font-black">R$ {(u.coins || 0).toLocaleString()} <span className="opacity-40 font-sans font-medium uppercase tracking-widest ml-1">Moedas</span></p>
+                         </div>
+                         <div className="flex items-center gap-3">
+                           <Diamond size={14} className="text-verdinha" />
+                           <p className="text-white/40 text-xs font-mono font-black">{u.diamonds || 0} <span className="opacity-40 font-sans font-medium uppercase tracking-widest ml-1 uppercase">Diamonds</span></p>
+                         </div>
                        </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                     <div className="relative">
-                       <input 
-                         type="number" 
-                         placeholder="Valor"
-                         className="bg-white/5 border border-white/10 rounded-2xl px-6 py-4 w-32 text-center text-white focus:outline-none focus:border-verdinha transition-all placeholder:text-white/10"
-                         onKeyDown={(e) => {
-                           if (e.key === 'Enter') {
-                             const val = Number((e.target as HTMLInputElement).value);
-                             handleUpdateDiamonds(u.id, val);
-                             (e.target as HTMLInputElement).value = '';
-                           }
-                         }}
-                       />
-                       <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-2 bg-black text-[8px] font-black text-white/20 uppercase tracking-widest whitespace-nowrap">Qtd Crédito</span>
-                     </div>
-                     <button 
-                       onClick={(e) => {
-                         const input = (e.currentTarget.previousSibling?.firstChild as HTMLInputElement);
-                         if (input) {
-                           handleUpdateDiamonds(u.id, Number(input.value));
-                           input.value = '';
-                         }
-                       }}
-                       className="bg-white text-black px-8 py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-verdinha transition-all duration-500 shadow-xl"
-                     >
-                       Bonificar
-                     </button>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-4 shrink-0">
+                    {/* Controles de Moedas */}
+                    <div className="flex flex-col gap-2">
+                      <CurrencyControl 
+                        label="Add Moedas"
+                        placeholder="R$ 0,00"
+                        onConfirm={(val) => handleUpdateCurrency(u.id, 'coins', val)}
+                        secondary
+                      />
+                    </div>
+                    {/* Controles de Diamantes */}
+                    <div className="flex flex-col gap-2">
+                      <CurrencyControl 
+                        label="Add Diamantes"
+                        placeholder="0000"
+                        onConfirm={(val) => handleUpdateCurrency(u.id, 'diamonds', val)}
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1577,6 +1833,50 @@ function AdminSection() {
   </div>
 </div>
 );
+}
+
+function CurrencyControl({ label, placeholder, onConfirm, secondary = false }: { label: string; placeholder: string; onConfirm: (val: number) => void; secondary?: boolean }) {
+  const [value, setValue] = useState('');
+  
+  return (
+    <div className="flex flex-col gap-2 relative">
+      <div className="relative group/input">
+        <input 
+          type="number" 
+          placeholder={placeholder}
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          className={cn(
+            "bg-white/5 border border-white/10 rounded-2xl px-6 py-4 w-40 text-center text-white focus:outline-none transition-all placeholder:text-white/10",
+            secondary ? "focus:border-white/40" : "focus:border-verdinha"
+          )}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              onConfirm(Number(value));
+              setValue('');
+            }
+          }}
+        />
+        <span className="absolute -top-3 left-1/2 -track-x-1/2 px-2 bg-[#0a0a0a] text-[8px] font-black text-white/20 uppercase tracking-widest whitespace-nowrap -translate-x-1/2">
+          {label}
+        </span>
+      </div>
+      <button 
+        onClick={() => {
+          onConfirm(Number(value));
+          setValue('');
+        }}
+        className={cn(
+          "w-full py-3 rounded-xl font-black text-[9px] uppercase tracking-[0.2em] transition-all duration-500",
+          secondary 
+            ? "bg-white/10 text-white hover:bg-white hover:text-black" 
+            : "bg-verdinha/10 text-verdinha hover:bg-verdinha hover:text-black"
+        )}
+      >
+        ADICIONAR
+      </button>
+    </div>
+  );
 }
 
 function AdminInput({ label, type = 'text', placeholder, value, onChange }: { label: string; type?: string; placeholder?: string; value: any; onChange: (v: string) => void }) {
