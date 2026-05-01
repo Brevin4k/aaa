@@ -1,0 +1,156 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile data for Verdinha City",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["player", "admin"] },
+        "coins": { "type": "number" },
+        "diamonds": { "type": "number" },
+        "discordId": { "type": "string" },
+        "steamId": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["displayName", "role", "coins", "diamonds"]
+    },
+    "WhitelistDoc": {
+      "title": "Whitelist Document",
+      "description": "Study materials for the whitelist",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["title", "content"]
+    },
+    "Rule": {
+      "title": "City Rule",
+      "description": "Rules of Verdinha City",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["title", "content", "category"]
+    },
+    "StoreItem": {
+      "title": "Store Item",
+      "description": "Items available in the shop",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "category": { "type": "string", "enum": ["cars", "real_estate", "plans"] },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["name", "price", "category"]
+    },
+    "FAQ": {
+      "title": "FAQ",
+      "description": "Frequently Asked Questions",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string" },
+        "answer": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["question", "answer", "category"]
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "Police departments, illegal groups, and factions",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "requirements": { "type": "string" },
+        "type": { "type": "string", "enum": ["police", "illegal", "group"] },
+        "status": { "type": "string", "enum": ["open", "closed"] },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["name", "requirements", "type", "status"]
+    },
+    "SupportTicket": {
+      "title": "Support Ticket",
+      "description": "User support tickets",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "subject": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "closed", "in_progress"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastUpdate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "subject", "status"]
+    },
+    "TicketMessage": {
+      "title": "Ticket Message",
+      "description": "Messages within a support ticket",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "isAdmin": { "type": "boolean" }
+      },
+      "required": ["senderId", "message", "timestamp"]
+    },
+    "Settings": {
+      "title": "Global Settings",
+      "description": "Global configuration for the site",
+      "type": "object",
+      "properties": {
+        "backgroundUrl": { "type": "string" },
+        "logoUrl": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/whitelistDocs/{docId}": {
+      "schema": "WhitelistDoc",
+      "description": "Whitelist study docs"
+    },
+    "/rules/{ruleId}": {
+      "schema": "Rule",
+      "description": "City rules"
+    },
+    "/storeItems/{itemId}": {
+      "schema": "StoreItem",
+      "description": "Shop items"
+    },
+    "/faqs/{faqId}": {
+      "schema": "FAQ",
+      "description": "FAQ entries"
+    },
+    "/organizations/{orgId}": {
+      "schema": "Organization",
+      "description": "Organizations and groups"
+    },
+    "/supportTickets/{ticketId}": {
+      "schema": "SupportTicket",
+      "description": "Support tickets"
+    },
+    "/supportTickets/{ticketId}/messages/{messageId}": {
+      "schema": "TicketMessage",
+      "description": "Messages for a support ticket"
+    },
+    "/settings/global": {
+      "schema": "Settings",
+      "description": "Global site settings"
+    }
+  }
+}

@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-verdinha: #22c55e;
+  --color-verdinha-dark: #166534;
+  --color-verdinha-light: #4ade80;
+}
+
+:root {
+  --bg-dark: #050505;
+  --bg-card: rgba(10, 10, 10, 0.7);
+  --border-green: rgba(34, 197, 94, 0.15);
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: #e5e5e5;
+  font-family: var(--font-sans);
+  background-image: 
+    radial-gradient(circle at 50% -20%, rgba(34, 197, 94, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(34, 197, 94, 0.05) 0%, transparent 40%);
+  background-attachment: fixed;
+}
+
+/* Atmospheric Scanlines */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+  background-size: 100% 4px, 3px 100%;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.3;
+}
+
+/* Glow effects */
+.glow-verdinha {
+  box-shadow: 0 0 20px -5px rgba(34, 197, 94, 0.5);
+}
+
+.text-glow-verdinha {
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #111;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-verdinha);
+}
