@@ -307,8 +307,11 @@ export default function App() {
     };
   }, []);
 
+  const [isDiscordLinkError, setIsDiscordLinkError] = useState<{ message: string; details?: any } | null>(null);
+
   const handleDiscordLink = async () => {
     try {
+      setIsDiscordLinkError(null);
       const response = await fetch('/api/auth/discord/url');
       
       if (!response.ok) {
@@ -317,19 +320,26 @@ export default function App() {
           const errorData = await response.json();
           errorMessage = errorData.message || errorData.error || errorMessage;
         } catch (e) {
-          // If not json, use status text
           errorMessage = `Erro ${response.status}: ${response.statusText}`;
         }
         throw new Error(errorMessage);
       }
 
       const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error(`Resposta inesperada do servidor: ${await response.text().then(t => t.slice(0, 100))}...`);
+      let data;
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(`Resposta inválida do servidor (não é JSON). Começo da resposta: ${text.slice(0, 100)}`);
+      }
+      
+      if (data.setup_required) {
+        setIsDiscordLinkError({ message: data.message, details: data.details });
+        return;
       }
 
-      const { url } = await response.json();
-      window.open(url, 'discord_auth', 'width=600,height=800');
+      window.open(data.url, 'discord_auth', 'width=600,height=800');
     } catch (err: any) {
       console.error(err);
       alert(`Erro: ${err.message}`);
@@ -604,6 +614,59 @@ export default function App() {
 
         {/* Admin Auth Modal */}
         <AnimatePresence>
+          {isDiscordLinkError && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-[#111] border border-white/10 p-8 rounded-[40px] max-w-lg w-full space-y-6 shadow-[0_0_100px_-20px_#facc1544]"
+              >
+                <div className="flex items-center gap-4 text-orange-400">
+                  <div className="p-3 bg-orange-400/10 rounded-2xl">
+                    <LifeBuoy size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black uppercase italic tracking-tight">Discord não configurado</h3>
+                    <p className="text-white/40 text-[10px] font-medium tracking-widest uppercase opacity-50">Siga os passos abaixo para ativar o login</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4 bg-white/5 p-6 rounded-3xl">
+                  <p className="text-sm text-white/60 leading-relaxed">
+                    Para habilitar a conexão com o Discord, você precisa configurar os segredos no menu <span className="text-white font-bold">Settings (Engrenagem)</span>:
+                  </p>
+                  <ul className="space-y-3">
+                    <li className="flex items-center gap-3 text-xs">
+                      <div className={cn("w-2.5 h-2.5 rounded-full shadow-[0_0_8px]", isDiscordLinkError.details?.clientId ? "bg-green-500 shadow-green-500" : "bg-red-500 shadow-red-500")} />
+                      <code className="bg-black/40 px-2 py-1 rounded text-verdinha font-mono">DISCORD_CLIENT_ID</code>
+                    </li>
+                    <li className="flex items-center gap-3 text-xs">
+                      <div className={cn("w-2.5 h-2.5 rounded-full shadow-[0_0_8px]", isDiscordLinkError.details?.clientSecret ? "bg-green-500 shadow-green-500" : "bg-red-500 shadow-red-500")} />
+                      <code className="bg-black/40 px-2 py-1 rounded text-verdinha font-mono">DISCORD_CLIENT_SECRET</code>
+                    </li>
+                  </ul>
+                  <div className="mt-4 pt-4 border-t border-white/5">
+                    <p className="text-[10px] text-white/20 uppercase font-black mb-2 tracking-widest">Redirect URI no Portal Developer:</p>
+                    <code className="block bg-black/40 p-4 rounded-xl text-[10px] text-verdinha font-mono break-all select-all">{isDiscordLinkError.details?.redirectUri}</code>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => setIsDiscordLinkError(null)}
+                  className="w-full py-4 bg-white/10 hover:bg-white/20 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl transition-all"
+                >
+                  Entendi, vou configurar
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+
           {isAdminAuthOpen && (
             <motion.div 
               initial={{ opacity: 0 }}

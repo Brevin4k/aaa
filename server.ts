@@ -23,14 +23,21 @@ async function startServer() {
   router.get('/auth/discord/url', (req, res) => {
     console.log('Request to /api/auth/discord/url');
     const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
     const appUrl = process.env.VITE_APP_URL || `https://${req.get('host')}`;
     const redirectUri = `${appUrl}/auth/callback`;
+    console.log('Generating Discord Auth URL for:', redirectUri);
 
-    if (!clientId) {
-      console.error('DISCORD_CLIENT_ID missing');
-      return res.status(500).json({ 
-        error: 'DISCORD_CLIENT_ID not configured',
-        message: 'Please set DISCORD_CLIENT_ID in the Settings menu.'
+    if (!clientId || !clientSecret) {
+      console.error('Discord credentials missing');
+      return res.status(200).json({ 
+        setup_required: true,
+        message: 'Configuração do Discord incompleta.',
+        details: {
+          clientId: !!clientId,
+          clientSecret: !!clientSecret,
+          redirectUri
+        }
       });
     }
 
@@ -47,9 +54,17 @@ async function startServer() {
 
   app.use('/api', router);
 
-  app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
+  // Catch-all for /api routes to prevent Vite from returning HTML
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'API route not found', path: req.path });
+  });
+
+  app.get(['/auth/callback', '/auth/discord/callback'], async (req, res) => {
     const { code } = req.query;
-    console.log('Discord callback received', { code: code ? 'present' : 'missing' });
+    console.log('Discord callback received', { 
+      code: code ? 'present' : 'missing',
+      path: req.path
+    });
     if (!code) {
       return res.status(400).send('No code provided');
     }
@@ -58,6 +73,7 @@ async function startServer() {
     const clientSecret = process.env.DISCORD_CLIENT_SECRET;
     const appUrl = process.env.VITE_APP_URL || `https://${req.get('host')}`;
     const redirectUri = `${appUrl}/auth/callback`;
+    console.log('Processing Discord callback with Redirect URI:', redirectUri);
 
     try {
       if (!clientId || !clientSecret) {
