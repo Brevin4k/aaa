@@ -400,8 +400,10 @@ export default function App() {
             <div className="flex items-center gap-4 pl-4 border-l border-white/5">
               <div className="text-right hidden sm:block">
                 <div className="flex items-center justify-end gap-2 mb-1">
-                  <span className="text-[9px] font-black text-verdinha/40 border border-verdinha/20 px-1.5 py-0.5 rounded uppercase leading-none">ID #{userData?.accountId}</span>
-                  <p className="text-sm font-black text-white leading-none uppercase italic">{userData?.displayName}</p>
+                  <p className="text-sm font-black text-white leading-none uppercase italic">
+                    <span className="text-verdinha/60 mr-1.5 text-[10px] tracking-tight not-italic font-mono">ID# {userData?.accountId}</span>
+                    {userData?.displayName}
+                  </p>
                 </div>
                 <div className="flex items-center justify-end gap-2">
                   <p className="text-[10px] text-white/20 font-black uppercase tracking-[0.2em] leading-none">{userData?.role === 'admin' ? 'Administração' : 'Morador'}</p>
@@ -585,7 +587,7 @@ function HomeSection({ userData, navigate, settings }: { userData: UserData | nu
           onClick={() => navigate('store')} 
         />
         <HomeCard 
-          title="Support Desk" 
+          title="Central de Suporte" 
           description="Abra tickets para suporte técnico ou financeiro com nossa staff." 
           icon={<LifeBuoy size={24} className="text-verdinha" />} 
           buttonText="Abrir Ticket" 
@@ -707,7 +709,7 @@ function RulesSection() {
   return (
     <div className="space-y-16 py-8 px-4 text-minimal">
       <div className="space-y-4 max-w-2xl">
-        <h2 className="text-sm font-black tracking-[0.4em] text-verdinha uppercase italic">Conduct • Policy</h2>
+        <h2 className="text-sm font-black tracking-[0.4em] text-verdinha uppercase italic">Conduta • Diretrizes</h2>
         <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-white uppercase italic leading-none">
           CÓDIGO DE <span className="text-verdinha">CONDUTA</span>
         </h1>
@@ -759,61 +761,71 @@ function StoreSection({ userData }: { userData: UserData | null }) {
   const filteredItems = activeTab === 'all' ? items : items.filter(i => i.category === activeTab);
 
   return (
-    <div className="space-y-20 py-8 px-4 text-minimal">
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-10">
-        <div className="space-y-4 max-w-2xl text-minimal">
-          <h2 className="text-sm font-black tracking-[0.4em] text-verdinha uppercase italic">Elite • Collections</h2>
-          <h1 className="text-6xl sm:text-8xl font-black tracking-tight text-white uppercase italic leading-none mb-4">
-            OBJETOS DE <span className="text-verdinha underline decoration-verdinha/20 underline-offset-8">PODER</span>
+    <div className="space-y-24 py-12 px-6">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-12">
+        <div className="space-y-6 max-w-3xl">
+          <h2 className="text-sm font-black tracking-[0.5em] text-verdinha uppercase italic opacity-70">Coleção • Suprema</h2>
+          <h1 className="text-6xl sm:text-9xl font-black tracking-tighter text-white uppercase italic leading-[0.8]">
+            CATÁLOGO <br />
+            <span className="text-verdinha">DE ELITE</span>
           </h1>
-          <p className="text-white/30 font-medium text-xl border-l-2 border-verdinha pl-8 max-w-xl">
-            A curadoria definitiva para quem busca autoridade e exclusividade no roleplay de elite.
+          <div className="h-px w-24 bg-verdinha/40 mt-8" />
+          <p className="text-white/40 font-medium text-xl leading-relaxed max-w-xl">
+            Recursos exclusivos para quem não aceita o comum. Redefina sua autoridade.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 bg-white/[0.02] border border-white/5 p-2 rounded-3xl h-fit">
+        <div className="flex flex-wrap gap-3 bg-white/[0.02] backdrop-blur-3xl border border-white/5 p-2 rounded-[2rem] h-fit">
           {['all', 'cars', 'real_estate', 'plans'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                "px-8 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-700",
+                "px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-700",
                 activeTab === tab 
-                  ? "bg-white text-black shadow-[0_0_40px_rgba(255,255,255,0.1)] scale-105" 
-                  : "text-white/20 hover:text-white hover:bg-white/5"
+                  ? "bg-white text-black shadow-[0_20px_50px_rgba(255,255,255,0.1)] scale-105" 
+                  : "text-white/30 hover:text-white hover:bg-white/5"
               )}
             >
-              {tab === 'all' ? 'Coleção Completa' : tab === 'cars' ? 'Automotivo' : tab === 'real_estate' ? 'Alto Padrão' : 'Experiências'}
+              {tab === 'all' ? 'Tudo' : tab === 'cars' ? 'Garagem' : tab === 'real_estate' ? 'Mansões' : 'Privilégios'}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-16">
         {filteredItems.map(item => (
-          <div key={item.id} className="group relative bg-glass border border-white/5 rounded-[3rem] p-4 hover:border-verdinha/20 transition-all duration-1000 flex flex-col h-full">
-            <div className="aspect-[16/10] bg-black/60 relative overflow-hidden rounded-[2.5rem]">
+          <motion.div 
+            layout
+            key={item.id} 
+            className="group relative flex flex-col h-full"
+          >
+            {/* Background Glow */}
+            <div className="absolute -inset-4 bg-verdinha/5 blur-3xl rounded-[4rem] opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+            
+            <div className="relative aspect-[16/11] bg-black/40 rounded-[3rem] overflow-hidden border border-white/5 group-hover:border-verdinha/30 transition-all duration-1000">
               {item.imageUrl ? (
-                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-[2000ms] ease-out" />
+                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-[3000ms] ease-out" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-white/5">
                   <ShoppingBag size={80} strokeWidth={0.5} />
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
-              <div className="absolute bottom-6 left-6 flex items-center gap-4 bg-black/60 backdrop-blur-xl border border-white/10 px-6 py-3 rounded-2xl">
-                <Diamond size={16} className="text-verdinha" />
-                <span className="font-mono text-lg font-black text-white">{item.price.toLocaleString()} <span className="text-[10px] text-white/40 ml-1">diamantes</span></span>
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-90" />
+              
+              <div className="absolute top-8 left-8 flex items-center gap-3 bg-black/60 backdrop-blur-2xl border border-white/10 px-5 py-2.5 rounded-full">
+                <Diamond size={14} className="text-verdinha group-hover:animate-pulse" />
+                <span className="font-mono text-sm font-black text-white tracking-widest">{item.price.toLocaleString()}</span>
               </div>
             </div>
             
-            <div className="p-8 flex-1 flex flex-col">
+            <div className="pt-10 px-4 flex-1 flex flex-col">
               <div className="mb-auto space-y-4">
                 <div className="flex items-center gap-3">
-                  <span className="h-px w-6 bg-verdinha/40" />
-                  <p className="text-[10px] text-verdinha font-black uppercase tracking-[0.5em] italic">{item.category}</p>
+                  <span className="h-[2px] w-4 bg-verdinha" />
+                  <p className="text-[10px] text-verdinha font-black uppercase tracking-[0.4em] italic">{item.category}</p>
                 </div>
-                <h4 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none group-hover:text-verdinha transition-colors duration-700">{item.name}</h4>
+                <h4 className="text-4xl font-black text-white uppercase italic tracking-tighter leading-none">{item.name}</h4>
                 <p className="text-white/30 text-sm font-medium leading-relaxed line-clamp-3">{item.description}</p>
               </div>
 
@@ -821,20 +833,20 @@ function StoreSection({ userData }: { userData: UserData | null }) {
                 <button 
                   onClick={() => window.open('https://discord.gg/verdinha', '_blank')}
                   className={cn(
-                    "w-full py-6 rounded-2xl font-black uppercase italic tracking-[0.3em] text-[10px] transition-all duration-700 relative overflow-hidden",
+                    "w-full py-6 rounded-[2rem] font-black uppercase italic tracking-[0.4em] text-[10px] transition-all duration-1000 relative overflow-hidden border border-white/5",
                     userData && userData.diamonds < item.price 
                       ? "bg-white/5 text-white/10 cursor-not-allowed" 
-                      : "bg-white text-black hover:bg-verdinha group-hover:shadow-[0_0_60px_rgba(34,197,94,0.15)]"
+                      : "bg-white/5 text-white hover:bg-white hover:text-black hover:shadow-[0_20px_40px_rgba(255,255,255,0.05)]"
                   )}
                   disabled={userData && userData.diamonds < item.price}
                 >
                   <span className="relative z-10">
-                    {userData && userData.diamonds < item.price ? 'CAPITAL INSUFICIENTE' : 'NEGOCIAR AQUISIÇÃO'}
+                    {userData && userData.diamonds < item.price ? 'SALDO INSUFICIENTE' : 'ADQUIRIR AGORA'}
                   </span>
                 </button>
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
       </div>
     </div>
@@ -856,7 +868,7 @@ function FAQSection() {
   return (
     <div className="space-y-16 py-8 px-4 text-minimal">
       <div className="space-y-4 max-w-2xl text-minimal">
-        <h2 className="text-sm font-black tracking-[0.4em] text-verdinha uppercase italic">Support • Knowledge</h2>
+        <h2 className="text-sm font-black tracking-[0.4em] text-verdinha uppercase italic">Suporte • Conhecimento</h2>
         <h1 className="text-5xl sm:text-6xl font-black tracking-tight text-white uppercase italic leading-none">
           DÚVIDAS <span className="text-verdinha">FREQUENTES</span>
         </h1>
@@ -925,13 +937,13 @@ function OrgsSection() {
                       "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter",
                       org.type === 'police' ? "bg-blue-500 text-white" : org.type === 'illegal' ? "bg-red-500 text-white" : "bg-verdinha text-black"
                     )}>
-                      {org.type}
+                      {org.type === 'police' ? 'POLÍCIA' : org.type === 'illegal' ? 'ILEGAL' : 'CIVIL'}
                     </span>
                     <span className={cn(
                       "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter",
                       org.status === 'open' ? "bg-verdinha/20 text-verdinha" : "bg-red-500/20 text-red-500"
                     )}>
-                      {org.status}
+                      {org.status === 'open' ? 'DISPONÍVEL' : 'OCUPADO'}
                     </span>
                   </div>
                   <h4 className="text-2xl font-bold text-white uppercase italic">{org.name}</h4>
